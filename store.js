@@ -8,40 +8,89 @@ const Store = (() => {
     const USER_KEY = 'prode2026_user';
     const KO_STORAGE_KEY = 'prode2026_knockout';
     const PRIZE_KEY = 'prode2026_prize';
+    
+    const SUPABASE_URL = 'https://sehcjtscawufqmuvhnnk.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNlaGNqdHNjYXd1ZnFtdXZobm5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMTc5MDIsImV4cCI6MjA5NDg5MzkwMn0.WMYpBH0r6K6XyxTNreoia1gQVRiJBdKpyOB5gaa4sk4';
+    
+    let supabaseClient = null;
     let currentUser = null;
+    let authInitialized = false;
+    let authCallback = null;
 
-    // --- Simple Local Auth ---
-    function loginWithName(name) {
-        if (!name || !name.trim()) return null;
-        name = name.trim();
-        currentUser = {
-            uid: 'user_' + name.toLowerCase().replace(/\s+/g, '_'),
-            displayName: name,
-            photoURL: null
-        };
-        localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
-        return currentUser;
+    if (typeof window.supabase !== 'undefined') {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     }
 
-    function signOut() {
+    if (supabaseClient) {
+        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            authInitialized = true;
+            if (session && session.user) {
+                currentUser = {
+                    uid: session.user.id,
+                    displayName: session.user.user_metadata.full_name || session.user.email.split('@')[0],
+                    photoURL: session.user.user_metadata.avatar_url || null,
+                    email: session.user.email
+                };
+                localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+                await syncLocalDataToSupabase().catch(console.error);
+            } else {
+                currentUser = null;
+                localStorage.removeItem(USER_KEY);
+            }
+            if (authCallback) {
+                authCallback(currentUser);
+            }
+        });
+    }
+
+    function onAuthChanged(callback) {
+        authCallback = callback;
+        if (authInitialized || !supabaseClient) {
+            callback(currentUser || getUser());
+        }
+    }
+
+    async function signInWithGoogle() {
+        if (!supabaseClient) return;
+        const { error } = await supabaseClient.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin + window.location.pathname
+            }
+        });
+        if (error) throw error;
+    }
+
+    async function signOut() {
         currentUser = null;
         localStorage.removeItem(USER_KEY);
+        // Clear cached local predictions of user
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith(STORAGE_KEY + '_') || key.startsWith(KO_STORAGE_KEY + '_'))) {
+                localStorage.removeItem(key);
+            }
+        }
+        if (supabaseClient) {
+            await supabaseClient.auth.signOut();
+        }
     }
 
     function getUser() {
         if (currentUser) return currentUser;
-        const saved = localStorage.getItem(USER_KEY);
-        if (saved) {
-            try { currentUser = JSON.parse(saved); return currentUser; }
-            catch(e) { localStorage.removeItem(USER_KEY); }
-        }
+        try {
+            const saved = localStorage.getItem(USER_KEY);
+            if (saved) {
+                currentUser = JSON.parse(saved);
+                return currentUser;
+            }
+        } catch(e) {}
         return null;
     }
 
     // --- Predictions CRUD ---
     function getPredictions(userId) {
-        const uid = userId || (currentUser && currentUser.uid);
-        if (!uid) return {};
+        const uid = userId || (currentUser && currentUser.uid) || 'local_temp';
         try {
             const raw = localStorage.getItem(`${STORAGE_KEY}_${uid}`);
             return raw ? JSON.parse(raw) : {};
@@ -49,8 +98,7 @@ const Store = (() => {
     }
 
     function savePrediction(matchId, homeGoals, awayGoals) {
-        const uid = currentUser && currentUser.uid;
-        if (!uid) return;
+        const uid = (currentUser && currentUser.uid) || 'local_temp';
         const preds = getPredictions(uid);
         if (homeGoals === '' || awayGoals === '' || homeGoals === null || awayGoals === null) {
             delete preds[matchId];
@@ -58,6 +106,24 @@ const Store = (() => {
             preds[matchId] = { h: parseInt(homeGoals), a: parseInt(awayGoals), ts: Date.now() };
         }
         localStorage.setItem(`${STORAGE_KEY}_${uid}`, JSON.stringify(preds));
+
+        if (currentUser && supabaseClient) {
+            if (homeGoals === '' || awayGoals === '' || homeGoals === null || awayGoals === null) {
+                supabaseClient.from('predictions')
+                    .delete()
+                    .match({ user_id: currentUser.uid, match_id: matchId })
+                    .then();
+            } else {
+                supabaseClient.from('predictions')
+                    .upsert({
+                        user_id: currentUser.uid,
+                        match_id: matchId,
+                        home_score: parseInt(homeGoals),
+                        away_score: parseInt(awayGoals)
+                    })
+                    .then();
+            }
+        }
     }
 
     // --- Real Results ---
@@ -161,8 +227,7 @@ const Store = (() => {
 
     // --- Knockout Predictions CRUD ---
     function getKnockoutPredictions(userId) {
-        const uid = userId || (currentUser && currentUser.uid);
-        if (!uid) return {};
+        const uid = userId || (currentUser && currentUser.uid) || 'local_temp';
         try {
             const raw = localStorage.getItem(`${KO_STORAGE_KEY}_${uid}`);
             return raw ? JSON.parse(raw) : {};
@@ -170,8 +235,7 @@ const Store = (() => {
     }
 
     function saveKnockoutPrediction(matchId, homeGoals, awayGoals, winner) {
-        const uid = currentUser && currentUser.uid;
-        if (!uid) return;
+        const uid = (currentUser && currentUser.uid) || 'local_temp';
         const preds = getKnockoutPredictions(uid);
         if (homeGoals === '' || awayGoals === '' || homeGoals === null || awayGoals === null) {
             delete preds[matchId];
@@ -183,6 +247,27 @@ const Store = (() => {
             }
         }
         localStorage.setItem(`${KO_STORAGE_KEY}_${uid}`, JSON.stringify(preds));
+
+        if (currentUser && supabaseClient) {
+            if (homeGoals === '' || awayGoals === '' || homeGoals === null || awayGoals === null) {
+                supabaseClient.from('knockout_predictions')
+                    .delete()
+                    .match({ user_id: currentUser.uid, match_id: matchId })
+                    .then();
+            } else {
+                const h = parseInt(homeGoals), a = parseInt(awayGoals);
+                const row = {
+                    user_id: currentUser.uid,
+                    match_id: matchId,
+                    home_score: h,
+                    away_score: a
+                };
+                if (h === a && winner) row.winner = winner;
+                supabaseClient.from('knockout_predictions')
+                    .upsert(row)
+                    .then();
+            }
+        }
     }
 
     // --- Knockout Winner Resolution ---
@@ -233,27 +318,41 @@ const Store = (() => {
         return { resolved, qualifiers, bestThirds };
     }
 
-    // --- Leaderboard (local only) ---
+    // --- Leaderboard ---
     function getLeaderboard() {
         const users = [];
-        // Scan localStorage for all prediction keys
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key.startsWith(STORAGE_KEY + '_')) {
-                const uid = key.replace(STORAGE_KEY + '_', '');
-                const preds = getPredictions(uid);
-                const results = getRealResults();
-                let total = 0;
-                Object.keys(preds).forEach(mId => {
-                    const actual = results[mId];
-                    total += scoreMatch(preds[mId], actual).points;
-                });
-                // Try to find display name
-                let name = uid.replace('user_', '').replace(/_/g, ' ');
-                name = name.charAt(0).toUpperCase() + name.slice(1);
-                users.push({ uid, name, total, predictions: Object.keys(preds).length });
-            }
+        const myUid = currentUser && currentUser.uid;
+        
+        if (myUid) {
+            const myName = currentUser.displayName || 'Mi Prode';
+            const myPreds = getPredictions(myUid);
+            const myResults = getRealResults();
+            let myTotal = 0;
+            Object.keys(myPreds).forEach(mId => {
+                myTotal += scoreMatch(myPreds[mId], myResults[mId]).points;
+            });
+            users.push({ uid: myUid, name: myName, avatar: currentUser.photoURL, total: myTotal, predictions: Object.keys(myPreds).length });
+        } else {
+            const localPreds = getPredictions('local_temp');
+            const myResults = getRealResults();
+            let myTotal = 0;
+            Object.keys(localPreds).forEach(mId => {
+                myTotal += scoreMatch(localPreds[mId], myResults[mId]).points;
+            });
+            users.push({ uid: 'local_temp', name: 'Mi Prode (Invitado)', avatar: null, total: myTotal, predictions: Object.keys(localPreds).length });
         }
+
+        const competitors = getCompetitors();
+        const results = getRealResults();
+        competitors.forEach(c => {
+            const preds = getPredictions(c.uid);
+            let total = 0;
+            Object.keys(preds).forEach(mId => {
+                total += scoreMatch(preds[mId], results[mId]).points;
+            });
+            users.push({ uid: c.uid, name: c.name, avatar: c.avatar, total, predictions: Object.keys(preds).length });
+        });
+
         return users.sort((a, b) => b.total - a.total || b.predictions - a.predictions);
     }
 
@@ -268,18 +367,31 @@ const Store = (() => {
     function savePrize(prize) {
         if (!prize || (!prize.title && !prize.description)) {
             localStorage.removeItem(PRIZE_KEY);
+            if (currentUser && supabaseClient) {
+                supabaseClient.from('prizes').delete().eq('user_id', currentUser.uid).then();
+            }
         } else {
-            localStorage.setItem(PRIZE_KEY, JSON.stringify({
+            const data = {
                 title: prize.title || '',
                 description: prize.description || '',
                 value: prize.value || '',
-                setBy: currentUser?.displayName || '',
+                setBy: currentUser?.displayName || 'Usuario local',
                 ts: Date.now()
-            }));
+            };
+            localStorage.setItem(PRIZE_KEY, JSON.stringify(data));
+
+            if (currentUser && supabaseClient) {
+                supabaseClient.from('prizes').upsert({
+                    user_id: currentUser.uid,
+                    title: data.title,
+                    description: data.description,
+                    value: data.value
+                }).then();
+            }
         }
     }
 
-    // --- Share Code ---
+    // --- Share Code & UUID ---
     function b64UrlEncode(str) {
         return btoa(unescape(encodeURIComponent(str)))
             .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -292,13 +404,15 @@ const Store = (() => {
     }
 
     function generateShareCode() {
-        const user = getUser();
-        if (!user) return null;
-        const predictions = getPredictions(user.uid);
-        const koPreds = getKnockoutPredictions(user.uid);
+        if (currentUser) {
+            return currentUser.uid;
+        }
+        
+        const predictions = getPredictions('local_temp');
+        const koPreds = getKnockoutPredictions('local_temp');
         const prize = getPrize();
 
-        const data = { v: 1, n: user.displayName, g: {}, k: {} };
+        const data = { v: 1, n: 'Invitado', g: {}, k: {} };
         Object.entries(predictions).forEach(([id, pred]) => {
             data.g[id] = [pred.h, pred.a];
         });
@@ -312,13 +426,18 @@ const Store = (() => {
     }
 
     function importShareCode(code) {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(code.trim())) {
+            return importCompetitor(code.trim());
+        }
+
         try {
             const json = b64UrlDecode(code.trim());
             const data = JSON.parse(json);
             if (!data.v || !data.n) throw new Error('Invalid');
 
             const uid = 'user_' + data.n.toLowerCase().replace(/\s+/g, '_');
-            if (uid === currentUser?.uid) {
+            if (uid === (currentUser && currentUser.uid)) {
                 return { success: false, error: 'No podés importar tu propio prode' };
             }
 
@@ -340,37 +459,336 @@ const Store = (() => {
             if (data.p && !getPrize()) {
                 savePrize({ title: data.p[0], description: data.p[1], value: data.p[2] });
             }
+
+            try {
+                const localConns = JSON.parse(localStorage.getItem('prode2026_local_connections') || '[]');
+                if (!localConns.includes(uid)) {
+                    localConns.push(uid);
+                    localStorage.setItem('prode2026_local_connections', JSON.stringify(localConns));
+                }
+                const cache = JSON.parse(localStorage.getItem('prode2026_profiles_cache') || '{}');
+                cache[uid] = { name: data.n, avatar: null };
+                localStorage.setItem('prode2026_profiles_cache', JSON.stringify(cache));
+            } catch (e) {}
+
             return { success: true, name: data.n, uid };
         } catch (e) {
             return { success: false, error: 'Código inválido. Verificá que lo hayas copiado completo.' };
         }
     }
 
-    // --- Competitors ---
+    // --- Competitors & Connections ---
     function getCompetitors() {
         const users = [];
-        const myUid = currentUser?.uid;
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith(STORAGE_KEY + '_')) {
-                const uid = key.replace(STORAGE_KEY + '_', '');
-                if (uid === myUid) continue;
-                let name = uid.replace('user_', '').replace(/_/g, ' ');
-                name = name.charAt(0).toUpperCase() + name.slice(1);
-                const preds = getPredictions(uid);
-                users.push({ uid, name, predictions: Object.keys(preds).length });
-            }
+        let competitorIds = [];
+        if (currentUser) {
+            try {
+                competitorIds = JSON.parse(localStorage.getItem(`prode2026_connections_${currentUser.uid}`) || '[]');
+            } catch (e) {}
+        } else {
+            try {
+                competitorIds = JSON.parse(localStorage.getItem('prode2026_local_connections') || '[]');
+            } catch (e) {}
         }
+
+        const cache = JSON.parse(localStorage.getItem('prode2026_profiles_cache') || '{}');
+        competitorIds.forEach(id => {
+            const prof = cache[id] || { name: 'Amigo Prode', avatar: null };
+            const preds = getPredictions(id);
+            users.push({
+                uid: id,
+                name: prof.name,
+                avatar: prof.avatar,
+                predictions: Object.keys(preds).length
+            });
+        });
         return users;
     }
 
-    function removeCompetitor(uid) {
+    async function removeCompetitor(uid) {
+        if (currentUser) {
+            try {
+                const connsKey = `prode2026_connections_${currentUser.uid}`;
+                let ids = JSON.parse(localStorage.getItem(connsKey) || '[]');
+                ids = ids.filter(id => id !== uid);
+                localStorage.setItem(connsKey, JSON.stringify(ids));
+            } catch (e) {}
+
+            if (supabaseClient) {
+                await supabaseClient.from('connections')
+                    .delete()
+                    .eq('user_id', currentUser.uid)
+                    .eq('competitor_id', uid);
+            }
+        } else {
+            try {
+                let ids = JSON.parse(localStorage.getItem('prode2026_local_connections') || '[]');
+                ids = ids.filter(id => id !== uid);
+                localStorage.setItem('prode2026_local_connections', JSON.stringify(ids));
+            } catch (e) {}
+        }
+
         localStorage.removeItem(`${STORAGE_KEY}_${uid}`);
         localStorage.removeItem(`${KO_STORAGE_KEY}_${uid}`);
     }
 
+    // --- Supabase Helpers ---
+    async function syncLocalDataToSupabase() {
+        if (!supabaseClient || !currentUser) return;
+        
+        const localPredsKey = `${STORAGE_KEY}_local_temp`;
+        const localKoPredsKey = `${KO_STORAGE_KEY}_local_temp`;
+
+        let localPreds = {};
+        try {
+            const raw = localStorage.getItem(localPredsKey);
+            if (raw) localPreds = JSON.parse(raw);
+        } catch (e) {}
+
+        if (Object.keys(localPreds).length > 0) {
+            const rows = Object.entries(localPreds).map(([matchId, pred]) => ({
+                user_id: currentUser.uid,
+                match_id: matchId,
+                home_score: pred.h,
+                away_score: pred.a
+            }));
+            const { error } = await supabaseClient.from('predictions').upsert(rows);
+            if (!error) localStorage.removeItem(localPredsKey);
+        }
+
+        let localKoPreds = {};
+        try {
+            const raw = localStorage.getItem(localKoPredsKey);
+            if (raw) localKoPreds = JSON.parse(raw);
+        } catch (e) {}
+
+        if (Object.keys(localKoPreds).length > 0) {
+            const rows = Object.entries(localKoPreds).map(([matchId, pred]) => {
+                const row = {
+                    user_id: currentUser.uid,
+                    match_id: matchId,
+                    home_score: pred.h,
+                    away_score: pred.a
+                };
+                if (pred.winner) row.winner = pred.winner;
+                return row;
+            });
+            const { error } = await supabaseClient.from('knockout_predictions').upsert(rows);
+            if (!error) localStorage.removeItem(localKoPredsKey);
+        }
+
+        await loadUserFromSupabase();
+        await refreshCompetitorsData();
+    }
+
+    async function loadUserFromSupabase() {
+        if (!supabaseClient || !currentUser) return;
+        
+        const { data: preds } = await supabaseClient
+            .from('predictions')
+            .select('match_id, home_score, away_score')
+            .eq('user_id', currentUser.uid);
+        
+        if (preds) {
+            const cache = {};
+            preds.forEach(p => {
+                cache[p.match_id] = { h: p.home_score, a: p.away_score, ts: Date.now() };
+            });
+            localStorage.setItem(`${STORAGE_KEY}_${currentUser.uid}`, JSON.stringify(cache));
+        }
+
+        const { data: koPreds } = await supabaseClient
+            .from('knockout_predictions')
+            .select('match_id, home_score, away_score, winner')
+            .eq('user_id', currentUser.uid);
+        
+        if (koPreds) {
+            const cache = {};
+            koPreds.forEach(p => {
+                cache[p.match_id] = { h: p.home_score, a: p.away_score, ts: Date.now() };
+                if (p.winner) cache[p.match_id].winner = p.winner;
+            });
+            localStorage.setItem(`${KO_STORAGE_KEY}_${currentUser.uid}`, JSON.stringify(cache));
+        }
+
+        const { data: prize } = await supabaseClient
+            .from('prizes')
+            .select('title, description, value')
+            .eq('user_id', currentUser.uid)
+            .maybeSingle();
+        
+        if (prize) {
+            localStorage.setItem(PRIZE_KEY, JSON.stringify({
+                title: prize.title,
+                description: prize.description || '',
+                value: prize.value || '',
+                setBy: currentUser.displayName,
+                ts: Date.now()
+            }));
+        }
+
+        const { data: conns } = await supabaseClient
+            .from('connections')
+            .select('competitor_id')
+            .eq('user_id', currentUser.uid);
+        
+        if (conns) {
+            const ids = conns.map(c => c.competitor_id);
+            localStorage.setItem(`prode2026_connections_${currentUser.uid}`, JSON.stringify(ids));
+        }
+    }
+
+    async function importCompetitor(competitorId) {
+        if (!supabaseClient) return { success: false, error: 'Supabase no inicializado' };
+        
+        const { data: profile, error: errProfile } = await supabaseClient
+            .from('profiles')
+            .select('id, display_name, avatar_url')
+            .eq('id', competitorId)
+            .maybeSingle();
+        
+        if (errProfile || !profile) {
+            return { success: false, error: 'Competidor no encontrado o link roto' };
+        }
+
+        if (currentUser && profile.id === currentUser.uid) {
+            return { success: false, error: 'No podés importarte a vos mismo' };
+        }
+
+        if (currentUser) {
+            const { error: errConn } = await supabaseClient
+                .from('connections')
+                .upsert({ user_id: currentUser.uid, competitor_id: profile.id });
+            
+            if (errConn) return { success: false, error: 'Error al conectar' };
+            
+            try {
+                const connsKey = `prode2026_connections_${currentUser.uid}`;
+                const ids = JSON.parse(localStorage.getItem(connsKey) || '[]');
+                if (!ids.includes(profile.id)) {
+                    ids.push(profile.id);
+                    localStorage.setItem(connsKey, JSON.stringify(ids));
+                }
+            } catch(e) {}
+        } else {
+            try {
+                const localConns = JSON.parse(localStorage.getItem('prode2026_local_connections') || '[]');
+                if (!localConns.includes(profile.id)) {
+                    localConns.push(profile.id);
+                    localStorage.setItem('prode2026_local_connections', JSON.stringify(localConns));
+                }
+            } catch (e) {}
+        }
+
+        const cache = JSON.parse(localStorage.getItem('prode2026_profiles_cache') || '{}');
+        cache[profile.id] = { name: profile.display_name, avatar: profile.avatar_url };
+        localStorage.setItem('prode2026_profiles_cache', JSON.stringify(cache));
+
+        await cacheCompetitorData(profile.id);
+
+        return { success: true, name: profile.display_name, uid: profile.id };
+    }
+
+    async function cacheCompetitorData(id) {
+        if (!supabaseClient) return;
+
+        const { data: preds } = await supabaseClient
+            .from('predictions')
+            .select('match_id, home_score, away_score')
+            .eq('user_id', id);
+        
+        if (preds) {
+            const cache = {};
+            preds.forEach(p => {
+                cache[p.match_id] = { h: p.home_score, a: p.away_score, ts: Date.now() };
+            });
+            localStorage.setItem(`${STORAGE_KEY}_${id}`, JSON.stringify(cache));
+        }
+
+        const { data: koPreds } = await supabaseClient
+            .from('knockout_predictions')
+            .select('match_id, home_score, away_score, winner')
+            .eq('user_id', id);
+        
+        if (koPreds) {
+            const cache = {};
+            koPreds.forEach(p => {
+                cache[p.match_id] = { h: p.home_score, a: p.away_score, ts: Date.now() };
+                if (p.winner) cache[p.match_id].winner = p.winner;
+            });
+            localStorage.setItem(`${KO_STORAGE_KEY}_${id}`, JSON.stringify(cache));
+        }
+    }
+
+    async function refreshCompetitorsData() {
+        if (!supabaseClient) return;
+        
+        let competitorIds = [];
+        if (currentUser) {
+            try {
+                competitorIds = JSON.parse(localStorage.getItem(`prode2026_connections_${currentUser.uid}`) || '[]');
+            } catch (e) {}
+        } else {
+            try {
+                competitorIds = JSON.parse(localStorage.getItem('prode2026_local_connections') || '[]');
+            } catch (e) {}
+        }
+
+        if (competitorIds.length === 0) return;
+
+        const { data: profiles } = await supabaseClient
+            .from('profiles')
+            .select('id, display_name, avatar_url')
+            .in('id', competitorIds);
+        
+        if (profiles) {
+            const cache = JSON.parse(localStorage.getItem('prode2026_profiles_cache') || '{}');
+            profiles.forEach(p => {
+                cache[p.id] = { name: p.display_name, avatar: p.avatar_url };
+            });
+            localStorage.setItem('prode2026_profiles_cache', JSON.stringify(cache));
+        }
+
+        const { data: preds } = await supabaseClient
+            .from('predictions')
+            .select('user_id, match_id, home_score, away_score')
+            .in('user_id', competitorIds);
+        
+        if (preds) {
+            const grouped = {};
+            competitorIds.forEach(id => grouped[id] = {});
+            preds.forEach(p => {
+                if (grouped[p.user_id]) {
+                    grouped[p.user_id][p.match_id] = { h: p.home_score, a: p.away_score, ts: Date.now() };
+                }
+            });
+            Object.entries(grouped).forEach(([id, data]) => {
+                localStorage.setItem(`${STORAGE_KEY}_${id}`, JSON.stringify(data));
+            });
+        }
+
+        const { data: koPreds } = await supabaseClient
+            .from('knockout_predictions')
+            .select('user_id, match_id, home_score, away_score, winner')
+            .in('user_id', competitorIds);
+        
+        if (koPreds) {
+            const grouped = {};
+            competitorIds.forEach(id => grouped[id] = {});
+            koPreds.forEach(p => {
+                if (grouped[p.user_id]) {
+                    grouped[p.user_id][p.match_id] = { h: p.home_score, a: p.away_score, ts: Date.now() };
+                    if (p.winner) grouped[p.user_id][p.match_id].winner = p.winner;
+                }
+            });
+            Object.entries(grouped).forEach(([id, data]) => {
+                localStorage.setItem(`${KO_STORAGE_KEY}_${id}`, JSON.stringify(data));
+            });
+        }
+    }
+
     return {
-        loginWithName, signOut, getUser,
+        onAuthChanged, signInWithGoogle, signOut, getUser,
         getPredictions, savePrediction,
         getRealResults, setRealResults,
         isMatchStarted, scoreMatch, getTotalScore,
@@ -378,6 +796,6 @@ const Store = (() => {
         getGroupQualifiers, getKnockoutPredictions, saveKnockoutPrediction,
         getKnockoutWinner, resolveKnockoutBracket,
         getPrize, savePrize, generateShareCode, importShareCode,
-        getCompetitors, removeCompetitor
+        getCompetitors, removeCompetitor, importCompetitor, refreshCompetitorsData
     };
 })();

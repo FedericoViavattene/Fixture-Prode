@@ -18,38 +18,52 @@ const App = (() => {
         startCountdown();
         populateVenueFilter();
         bindEvents();
-        // Check existing user
-        const user = Store.getUser();
-        if (user) setLoggedIn(user);
-        else showLoginForm();
-        renderView(currentView);
-        checkShareUrl();
+
+        // Show loading indicator initially
+        const authArea = $('authArea');
+        if (authArea) {
+            authArea.innerHTML = `<div class="auth-loading"><div class="spinner"></div></div>`;
+        }
+
+        Store.onAuthChanged((user) => {
+            if (user) {
+                setLoggedIn(user);
+            } else {
+                showLoginForm();
+            }
+            renderView(currentView);
+            checkShareUrl();
+        });
     }
 
     // --- Auth ---
-    function doLogin() {
-        const input = $('loginInput');
-        if (!input) return;
-        const name = input.value.trim();
-        if (!name) { input.focus(); return; }
-        const user = Store.loginWithName(name);
-        if (user) setLoggedIn(user);
+    async function doGoogleLogin() {
+        try {
+            await Store.signInWithGoogle();
+        } catch (error) {
+            console.error('Google login failed:', error);
+            showNotification('Error al iniciar sesión con Google', 'error');
+        }
     }
 
     function setLoggedIn(user) {
         currentUser = user;
         const authArea = $('authArea');
         const scoreBar = $('scoreBar');
-        const initial = (user.displayName || 'U')[0].toUpperCase();
+        
+        const avatarHtml = user.photoURL 
+            ? `<img src="${user.photoURL}" class="user-avatar" alt="${user.displayName}" referrerpolicy="no-referrer" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+               <div class="user-avatar-placeholder" style="display:none;">${(user.displayName || 'U')[0].toUpperCase()}</div>`
+            : `<div class="user-avatar-placeholder">${(user.displayName || 'U')[0].toUpperCase()}</div>`;
+
         authArea.innerHTML = `
             <div class="user-logged">
-                <div class="user-avatar-placeholder">${initial}</div>
+                ${avatarHtml}
                 <span class="user-name">${user.displayName}</span>
                 <button class="btn-logout" onclick="App.logout()">Salir</button>
             </div>`;
         scoreBar.style.display = '';
         updateScoreBar();
-        renderView(currentView);
     }
 
     function showLoginForm() {
@@ -58,25 +72,23 @@ const App = (() => {
         const scoreBar = $('scoreBar');
         authArea.innerHTML = `
             <div class="login-inline">
-                <input type="text" id="loginInput" class="login-inline-input" placeholder="Tu nombre..." maxlength="20">
-                <button class="btn-login" onclick="App.doLogin()">Ingresar</button>
+                <button class="btn-login-google" onclick="App.doGoogleLogin()">
+                    <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18" style="margin-right: 8px;">
+                        <path fill="#EA4335" d="M12 5.04c1.78 0 3.37.61 4.62 1.8l3.47-3.47C17.99 1.24 15.22.4 12 .4 7.42.4 3.51 3.03 1.63 6.87l3.99 3.1A6.97 6.97 0 0 1 12 5.04z"/>
+                        <path fill="#4285F4" d="M23.49 12.27c0-.86-.08-1.68-.22-2.47H12v4.67h6.44c-.28 1.47-1.11 2.71-2.36 3.56l3.66 2.84c2.14-1.98 3.39-4.89 3.39-8.6z"/>
+                        <path fill="#FBBC05" d="M5.62 14.53a6.99 6.99 0 0 1 0-4.14l-3.99-3.1A11.96 11.96 0 0 0 0 12c0 1.92.45 3.74 1.25 5.37l4.37-3.84z"/>
+                        <path fill="#34A853" d="M12 23.6c3.24 0 5.96-1.07 7.95-2.91l-3.66-2.84a7.22 7.22 0 0 1-4.29 1.19c-3.55 0-6.56-2.4-7.63-5.63l-4.37 3.84a11.96 11.96 0 0 0 12 9.6z"/>
+                    </svg>
+                    <span>Ingresar con Google</span>
+                </button>
             </div>`;
         scoreBar.style.display = 'none';
-        // Enter key to login
-        const inp = $('loginInput');
-        if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') App.doLogin(); });
     }
 
-    function logout() {
-        Store.signOut();
+    async function logout() {
+        await Store.signOut();
         showLoginForm();
         renderView(currentView);
-    }
-
-    // Keep for compatibility
-    function onAuthChanged(user) {
-        if (user) setLoggedIn(user);
-        else showLoginForm();
     }
 
     function updateScoreBar() {
@@ -113,6 +125,15 @@ const App = (() => {
         const infoBar = $('infoBar');
         filtersEl.style.display = (view === 'predictions' || view === 'official') ? '' : 'none';
         infoBar.style.display = (view === 'predictions' || view === 'official') ? '' : 'none';
+
+        if (view === 'ranking' || view === 'prize') {
+            Store.refreshCompetitorsData().then(() => {
+                if (currentView === view) {
+                    if (view === 'ranking') renderRanking();
+                    else if (view === 'prize') renderPrize();
+                }
+            }).catch(console.error);
+        }
 
         switch (view) {
             case 'predictions': renderFixture(true); break;
@@ -317,9 +338,8 @@ const App = (() => {
     }
 
     // --- Ranking ---
-    async function renderRanking() {
-        fixtureMain.innerHTML = '<div class="loading-spinner">Cargando ranking...</div>';
-        const users = await Store.getLeaderboard();
+    function renderRanking() {
+        const users = Store.getLeaderboard();
         if (!users.length) {
             fixtureMain.innerHTML = `<div class="no-results"><div class="no-results-icon">🏆</div><div class="no-results-text">Aún no hay participantes</div></div>`;
             return;
@@ -333,7 +353,7 @@ const App = (() => {
             html += `<div class="ranking-row ${isMe ? 'is-me' : ''}">
                 <div class="rank-pos">${medal}</div>
                 <div class="rank-user">
-                    ${u.photo ? `<img src="${u.photo}" class="rank-avatar" referrerpolicy="no-referrer">` : `<div class="rank-avatar-ph">${(u.name||'?')[0]}</div>`}
+                    ${u.avatar ? `<img src="${u.avatar}" class="rank-avatar" referrerpolicy="no-referrer">` : `<div class="rank-avatar-ph">${(u.name||'?')[0].toUpperCase()}</div>`}
                     <span class="rank-name">${u.name}</span>
                 </div>
                 <div class="rank-stats">
@@ -969,5 +989,5 @@ const App = (() => {
     // Boot
     document.addEventListener('DOMContentLoaded', init);
 
-    return { doLogin, logout, onAuthChanged, onScoreChange, onKnockoutScoreChange, onPenaltyPick, editPrize, cancelPrize, savePrizeForm, shareProde, copyShareCode, importProde, removeCompetitor, renderView };
+    return { doGoogleLogin, logout, onScoreChange, onKnockoutScoreChange, onPenaltyPick, editPrize, cancelPrize, savePrizeForm, shareProde, copyShareCode, importProde, removeCompetitor, renderView };
 })();

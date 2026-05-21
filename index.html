@@ -43,10 +43,7 @@
             </div>
             <!-- Auth Area -->
             <div class="auth-area" id="authArea">
-                <div class="login-inline">
-                    <input type="text" id="loginInput" class="login-inline-input" placeholder="Tu nombre..." maxlength="20">
-                    <button class="btn-login" onclick="App.doLogin()">Ingresar</button>
-                </div>
+                <div class="auth-loading"><div class="spinner"></div></div>
             </div>
         </div>
         <!-- Main Navigation -->
@@ -146,6 +143,7 @@
         </div>
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="data.js"></script>
     <script src="store.js"></script>
     <script src="app.js"></script>
