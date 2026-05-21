@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Prode Mundial FIFA 2026 – Predecí los resultados, sumá puntos y competí con amigos">
+    <title>Prode Mundial 2026 | FIFA World Cup USA-MEX-CAN</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="bg-animation">
+        <div class="bg-gradient"></div>
+        <div class="bg-particles" id="particles"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="30" cy="30" r="28" stroke="url(#logoGrad)" stroke-width="2.5" fill="none"/>
+                        <path d="M30 5 L30 55 M5 30 L55 30 M12 12 L48 48 M48 12 L12 48" stroke="url(#logoGrad)" stroke-width="1" opacity="0.3"/>
+                        <circle cx="30" cy="30" r="12" stroke="url(#logoGrad)" stroke-width="2" fill="none"/>
+                        <path d="M30 18 L36 25 L34 33 L26 33 L24 25 Z" fill="url(#logoGrad)" opacity="0.6"/>
+                        <defs>
+                            <linearGradient id="logoGrad" x1="0" y1="0" x2="60" y2="60">
+                                <stop offset="0%" stop-color="#00d4ff"/>
+                                <stop offset="50%" stop-color="#7b2ff7"/>
+                                <stop offset="100%" stop-color="#ff2d95"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <h1>PRODE MUNDIAL 2026</h1>
+                    <p class="logo-subtitle">USA • MÉXICO • CANADÁ</p>
+                </div>
+            </div>
+            <!-- Auth Area -->
+            <div class="auth-area" id="authArea">
+                <div class="login-inline">
+                    <input type="text" id="loginInput" class="login-inline-input" placeholder="Tu nombre..." maxlength="20">
+                    <button class="btn-login" onclick="App.doLogin()">Ingresar</button>
+                </div>
+            </div>
+        </div>
+        <!-- Main Navigation -->
+        <nav class="main-nav" id="mainNav">
+            <button class="main-nav-tab active" data-view="predictions">⚽ Mis Predicciones</button>
+            <button class="main-nav-tab" data-view="official">📋 Fixture Oficial</button>
+            <button class="main-nav-tab" data-view="tables">📊 Tablas</button>
+            <button class="main-nav-tab" data-view="bracket">🏆 Llaves</button>
+            <button class="main-nav-tab" data-view="prize">🎁 Mi Prode</button>
+            <button class="main-nav-tab" data-view="ranking">🥇 Ranking</button>
+        </nav>
+    </header>
+
+    <!-- Score Bar -->
+    <section class="score-bar" id="scoreBar" style="display:none;">
+        <div class="score-bar-content">
+            <div class="user-info" id="userInfo"></div>
+            <div class="score-pills">
+                <div class="score-pill total"><span class="sp-val" id="scoreTotal">0</span><span class="sp-label">Puntos</span></div>
+                <div class="score-pill exact"><span class="sp-val" id="scoreExact">0</span><span class="sp-label">Exactos</span></div>
+                <div class="score-pill result"><span class="sp-val" id="scoreResult">0</span><span class="sp-label">Resultados</span></div>
+                <div class="score-pill wrong"><span class="sp-val" id="scoreWrong">0</span><span class="sp-label">Errados</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Countdown / Tournament Info Bar -->
+    <section class="info-bar" id="infoBar">
+        <div class="info-bar-content">
+            <div class="countdown" id="countdown">
+                <div class="countdown-item">
+                    <span class="countdown-value" id="days">--</span>
+                    <span class="countdown-label">Días</span>
+                </div>
+                <div class="countdown-separator">:</div>
+                <div class="countdown-item">
+                    <span class="countdown-value" id="hours">--</span>
+                    <span class="countdown-label">Horas</span>
+                </div>
+                <div class="countdown-separator">:</div>
+                <div class="countdown-item">
+                    <span class="countdown-value" id="minutes">--</span>
+                    <span class="countdown-label">Min</span>
+                </div>
+                <div class="countdown-separator">:</div>
+                <div class="countdown-item">
+                    <span class="countdown-value" id="seconds">--</span>
+                    <span class="countdown-label">Seg</span>
+                </div>
+            </div>
+            <div class="tournament-stats">
+                <div class="stat-pill"><span class="stat-icon">🏟️</span><span>16 Sedes</span></div>
+                <div class="stat-pill"><span class="stat-icon">🌍</span><span>48 Selecciones</span></div>
+                <div class="stat-pill"><span class="stat-icon">⚽</span><span>104 Partidos</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Filters (for predictions/official views) -->
+    <section class="filters-section" id="filtersSection">
+        <div class="filters-content">
+            <div class="filter-group">
+                <label class="filter-label">Grupo</label>
+                <select class="filter-select" id="filterGroup">
+                    <option value="all">Todos los grupos</option>
+                    <option value="A">Grupo A</option><option value="B">Grupo B</option>
+                    <option value="C">Grupo C</option><option value="D">Grupo D</option>
+                    <option value="E">Grupo E</option><option value="F">Grupo F</option>
+                    <option value="G">Grupo G</option><option value="H">Grupo H</option>
+                    <option value="I">Grupo I</option><option value="J">Grupo J</option>
+                    <option value="K">Grupo K</option><option value="L">Grupo L</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">Sede</label>
+                <select class="filter-select" id="filterVenue">
+                    <option value="all">Todas las sedes</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">Equipo</label>
+                <input type="text" class="filter-input" id="filterTeam" placeholder="Buscar equipo...">
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content Area -->
+    <main class="fixture-main" id="fixtureMain">
+        <!-- Dynamic content inserted here -->
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <p>FIFA World Cup 2026™ – Prode no oficial • Horarios en hora Argentina (UTC-3)</p>
+            <p class="footer-sub">Datos actualizados al 18 de mayo de 2026</p>
+        </div>
+    </footer>
+
+    <script src="data.js"></script>
+    <script src="store.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
