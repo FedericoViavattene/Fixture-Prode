@@ -25,13 +25,20 @@ const Store = (() => {
         supabaseClient.auth.onAuthStateChange(async (event, session) => {
             authInitialized = true;
             if (session && session.user) {
+                const u = session.user;
                 currentUser = {
-                    uid: session.user.id,
-                    displayName: session.user.user_metadata.full_name || session.user.email.split('@')[0],
-                    photoURL: session.user.user_metadata.avatar_url || null,
-                    email: session.user.email
+                    uid: u.id,
+                    displayName: u.user_metadata.full_name || u.user_metadata.name || u.email.split('@')[0],
+                    photoURL: u.user_metadata.avatar_url || null,
+                    email: u.email
                 };
                 localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+
+                // Create profile in DB if it doesn't exist (replaces database trigger)
+                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                    await ensureProfile(currentUser).catch(console.error);
+                }
+
                 await syncLocalDataToSupabase().catch(console.error);
             } else {
                 currentUser = null;
@@ -41,6 +48,19 @@ const Store = (() => {
                 authCallback(currentUser);
             }
         });
+    }
+
+    async function ensureProfile(user) {
+        if (!supabaseClient || !user) return;
+        const { data, error } = await supabaseClient
+            .from('profiles')
+            .upsert({
+                id: user.uid,
+                display_name: user.displayName,
+                avatar_url: user.photoURL,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'id', ignoreDuplicates: true });
+        if (error) console.warn('ensureProfile:', error.message);
     }
 
     function onAuthChanged(callback) {
