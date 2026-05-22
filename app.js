@@ -25,6 +25,20 @@ const App = (() => {
             authArea.innerHTML = `<div class="auth-loading"><div class="spinner"></div></div>`;
         }
 
+        // Check for redirect errors from Supabase Auth in query or hash
+        const urlParams = new URLSearchParams(window.location.search);
+        let errorMsg = urlParams.get('error_description') || urlParams.get('error');
+        
+        if (!errorMsg && window.location.hash.startsWith('#error=')) {
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            errorMsg = hashParams.get('error_description') || hashParams.get('error');
+        }
+
+        if (errorMsg) {
+            showNotification(`❌ Error: ${decodeURIComponent(errorMsg).replace(/\+/g, ' ')}`, 'error');
+            history.replaceState(null, '', window.location.pathname);
+        }
+
         Store.onAuthChanged((user) => {
             if (user) {
                 setLoggedIn(user);
