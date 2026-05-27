@@ -2256,14 +2256,23 @@ body {
 }
 
 /* RESPONSIVE */
+
+/* === TABLET (max 900px) === */
 @media(max-width:900px) {
     .header-content {
         flex-direction: column;
         gap: 10px;
+        padding: 10px 16px;
     }
 
     .main-nav {
         justify-content: flex-start;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .main-nav::-webkit-scrollbar {
+        display: none;
     }
 
     .match-card {
@@ -2321,40 +2330,203 @@ body {
     }
 }
 
+/* === MOBILE (max 600px) === */
 @media(max-width:600px) {
+    /* Header */
+    .header-content {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    .logo-icon svg {
+        width: 32px;
+        height: 32px;
+    }
+
     .logo-text h1 {
-        font-size: 1.1rem;
+        font-size: 1rem;
+        letter-spacing: 1px;
+    }
+
+    .logo-subtitle {
+        font-size: .55rem;
+        letter-spacing: 2px;
+    }
+
+    .logo-area {
+        gap: 8px;
+    }
+
+    /* Auth - Google button & user logged */
+    .btn-login-google {
+        padding: 8px 14px;
+        font-size: .75rem;
+    }
+
+    .btn-login-google svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .user-avatar,
+    .user-avatar-placeholder {
+        width: 28px;
+        height: 28px;
+        font-size: .75rem;
+    }
+
+    .user-name {
+        font-size: .75rem;
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .user-logged {
+        gap: 6px;
+    }
+
+    .btn-logout {
+        font-size: .65rem;
+        padding: 3px 10px;
+    }
+
+    /* Navigation - horizontal scrollable */
+    .main-nav {
+        gap: 0;
+        padding: 0 4px;
     }
 
     .main-nav-tab {
         font-size: .72rem;
-        padding: 10px 14px;
+        padding: 10px 12px;
+        min-height: 44px;
+    }
+
+    /* Score Bar */
+    .score-bar-content {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    .score-pills {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .score-pill {
+        padding: 4px 10px;
+        font-size: .7rem;
+    }
+
+    /* Info / Countdown Bar */
+    .info-bar-content {
+        padding: 10px 12px;
+        gap: 10px;
     }
 
     .countdown-value {
         font-size: 1.3rem;
     }
 
+    .countdown-label {
+        font-size: .55rem;
+    }
+
+    .tournament-stats {
+        gap: 6px;
+    }
+
+    .stat-pill {
+        font-size: .65rem;
+        padding: 4px 8px;
+    }
+
+    /* Filters */
     .filters-content {
         flex-direction: column;
+        padding: 10px 12px;
     }
 
     .filter-group {
         width: 100%;
     }
 
+    .filter-select {
+        width: 100%;
+    }
+
+    /* Main Content */
+    .fixture-main {
+        padding: 12px 8px;
+    }
+
+    /* Match Cards - optimized for touch */
+    .match-card {
+        padding: 10px;
+        border-radius: var(--radius-md);
+        gap: 8px;
+    }
+
     .match-day-header {
         flex-wrap: wrap;
+        padding: 10px 12px;
+        gap: 6px;
     }
 
-    .score-pills {
-        flex-wrap: wrap;
-        justify-content: center;
+    .day-info h3 {
+        font-size: .85rem;
     }
 
+    .team-name {
+        font-size: .8rem;
+    }
+
+    .team-flag {
+        width: 24px;
+        height: 16px;
+    }
+
+    /* Score inputs - LARGER for mobile touch */
+    .score-input {
+        width: 44px;
+        height: 44px;
+        font-size: 1.2rem;
+        border-radius: var(--radius-md);
+        -webkit-appearance: none;
+    }
+
+    .score-dash {
+        font-size: 1rem;
+    }
+
+    /* Tables */
+    .group-table {
+        font-size: .7rem;
+    }
+
+    .group-table th,
+    .group-table td {
+        padding: 6px 4px;
+    }
+
+    .tables-container {
+        padding: 0 4px;
+        gap: 12px;
+    }
+
+    /* Bracket */
     .bracket-tab {
         font-size: .65rem;
         padding: 7px 10px;
+        min-height: 40px;
+    }
+
+    .bracket-match {
+        min-width: unset;
+        width: 100%;
     }
 
     .champion-name {
@@ -2366,6 +2538,7 @@ body {
         height: 28px;
     }
 
+    /* Prize / Share */
     .share-code-box {
         flex-direction: column;
     }
@@ -2378,7 +2551,93 @@ body {
         font-size: 1.2rem;
     }
 
+    .prize-card {
+        padding: 16px 12px;
+    }
+
     .section-title {
         font-size: 1.1rem;
+    }
+
+    /* Ranking */
+    .ranking-row {
+        padding: 10px 12px;
+    }
+
+    .rank-name {
+        font-size: .8rem;
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .rank-avatar,
+    .rank-avatar-ph {
+        width: 28px;
+        height: 28px;
+        font-size: .75rem;
+    }
+
+    .rank-stats {
+        gap: 6px;
+    }
+
+    .rank-predictions,
+    .rank-total {
+        font-size: .7rem;
+    }
+
+    /* Notification */
+    .notification {
+        left: 12px;
+        right: 12px;
+        width: auto;
+        max-width: none;
+        font-size: .8rem;
+    }
+
+    /* Footer */
+    .footer {
+        padding: 20px 12px;
+    }
+
+    .footer-title {
+        font-size: .85rem;
+    }
+}
+
+/* === SMALL PHONES (max 380px) === */
+@media(max-width:380px) {
+    .logo-text h1 {
+        font-size: .85rem;
+    }
+
+    .main-nav-tab {
+        font-size: .65rem;
+        padding: 8px 10px;
+    }
+
+    .score-input {
+        width: 40px;
+        height: 40px;
+        font-size: 1.1rem;
+    }
+
+    .countdown-value {
+        font-size: 1.1rem;
+    }
+
+    .btn-login-google {
+        padding: 6px 12px;
+        font-size: .7rem;
+    }
+
+    .rank-name {
+        max-width: 80px;
+    }
+
+    .user-name {
+        max-width: 70px;
     }
 }
