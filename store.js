@@ -22,7 +22,7 @@ const Store = (() => {
     }
 
     if (supabaseClient) {
-        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        supabaseClient.auth.onAuthStateChange((event, session) => {
             authInitialized = true;
             if (session && session.user) {
                 const u = session.user;
@@ -34,18 +34,30 @@ const Store = (() => {
                 };
                 localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
 
-                // Create profile in DB if it doesn't exist (replaces database trigger)
-                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                    await ensureProfile(currentUser).catch(console.error);
+                // Desbloqueamos la UI de inmediato llamando al callback
+                if (authCallback) {
+                    authCallback(currentUser);
                 }
 
-                await syncLocalDataToSupabase().catch(console.error);
+                // Ejecutamos la sincronización en segundo plano para no demorar la carga visual
+                (async () => {
+                    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                        await ensureProfile(currentUser).catch(console.error);
+                    }
+                    await syncLocalDataToSupabase().catch(console.error);
+                    
+                    // Opcional: si la sincronización trajo datos nuevos de Supabase, refrescamos la UI
+                    if (authCallback) {
+                        authCallback(currentUser);
+                    }
+                })();
+
             } else {
                 currentUser = null;
                 localStorage.removeItem(USER_KEY);
-            }
-            if (authCallback) {
-                authCallback(currentUser);
+                if (authCallback) {
+                    authCallback(currentUser);
+                }
             }
         });
     }
